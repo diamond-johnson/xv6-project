@@ -151,6 +151,51 @@ found:
   return p;
 }
 
+
+int 
+thread_schd(struct proc *p) {
+    if (!p->current_thread) {
+        return 1;
+    }
+    if (p->current_thread->state == THREAD_RUNNING) {
+        p->current_thread->state = THREAD_RUNNABLE; 
+    }
+
+    acquire(&tickslock);
+    uint ticks0 = ticks;
+    release(&tickslock);
+
+    struct thread *next = 0;
+    struct thread *t = p->current_thread + 1;
+    for (int i = 0; i < NTHREAD; i++, t++) {
+        if (t >= p->threads + NTHREAD) {
+            t = p->threads;
+        }
+        if (t->state == THREAD_RUNNABLE) {
+            next = t;
+            break;
+        } else if (t->state == THREAD_SLEEPING && ticks0 - t->sleep_tick0 >= t->sleep_n) {
+            next = t;
+            break;
+        }
+   }
+
+   if (next == 0) {
+       return 0;
+   } else if (p->current_thread != next) { 
+       next->state = THREAD_RUNNING;
+       struct thread *t = p->current_thread;
+       p->current_thread = next;
+       if (t->trapframe) {
+           *t->trapframe = *p->trapframe;
+       }
+       *p->trapframe = *next->trapframe;
+   }
+   return 1; 
+}
+
+
+
 // free thread 
 void
 freethread(struct thread *t)
@@ -719,6 +764,28 @@ procdump(void)
 }
 
 
+// implementation of scheduling mechanisms of threads
+struct thread *initthread(struct proc *p)
+{ 
+    if (!p->current_thread) {
+        for (int i = 0; i < NTHREAD; ++i) {
+            p->threads[i].trapframe = 0;
+            freethread(&p->threads[i]);
+        }
+
+       // Initialize main thread
+       struct thread *t = &p->threads[0];
+       t->id = p->pid;
+       if ((t->trapframe = (struct trapframe *)kalloc()) == 0) {
+           freethread(t);
+           return 0;
+       }
+       t->state = THREAD_RUNNING;
+       p->current_thread = t;
+    }
+    return p->current_thread; 
+}
+
 
 struct thread *allocthread(uint64 start_thread, uint64 stack_address,
 uint64 arg) {
@@ -786,10 +853,11 @@ int jointhread(uint join_id) {
 
     if (!found)
         return -2;
-        t->join = join_id; 
-        t->state = THREAD_JOINED;
-        yield();
-        return 0; 
+
+    t->join = join_id; 
+    t->state = THREAD_JOINED;
+    yield();
+    return 0; 
 }
 
 void sleepthread(int n, uint ticks0) {
@@ -800,70 +868,4 @@ void sleepthread(int n, uint ticks0) {
     thread_schd(myproc()); 
 }
 
-
-// implementation of scheduling mechanisms of threads
-struct thread *
-initthread(struct proc *p)
-{ 
-    if (!p->current_thread) {
-        for (int i = 0; i < NTHREAD; ++i) {
-            p->threads[i].trapframe = 0;
-            freethread(&p->threads[i]);
-        }
-
-       // Initialize main thread
-       struct thread *t = &p->threads[0];
-       t->id = p->pid;
-       if ((t->trapframe = (struct trapframe *)kalloc()) == 0) {
-           freethread(t);
-           return 0;
-       }
-       t->state = THREAD_RUNNING;
-       p->current_thread = t;
-    }
-    return p->current_thread; 
-}
-
-
-int 
-thread_schd(struct proc *p) {
-    if (!p->current_thread) {
-        return 1;
-    }
-    if (p->current_thread->state == THREAD_RUNNING) {
-        p->current_thread->state = THREAD_RUNNABLE; 
-    }
-
-    acquire(&tickslock);
-    uint ticks0 = ticks;
-    release(&tickslock);
-
-    struct thread *next = 0;
-    struct thread *t = p->current_thread + 1;
-    for (int i = 0; i < NTHREAD; i++, t++) {
-        if (t >= p->threads + NTHREAD) {
-            t = p->threads;
-        }
-        if (t->state == THREAD_RUNNABLE) {
-            next = t;
-            break;
-        } else if (t->state == THREAD_SLEEPING && ticks0 - t->sleep_tick0 >= t->sleep_n) {
-            next = t;
-            break;
-        }
-   }
-
-   if (next == 0) {
-       return 0;
-   } else if (p->current_thread != next) { 
-       next->state = THREAD_RUNNING;
-       struct thread *t = p->current_thread;
-       p->current_thread = next;
-       if (t->trapframe) {
-           *t->trapframe = *p->trapframe;
-       }
-       *p->trapframe = *next->trapframe;
-   }
-   return 1; 
-}
 
