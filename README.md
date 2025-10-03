@@ -1,7 +1,7 @@
 # xv6 Multi-Threading Extension
 
 ## Overview
-
+ 
 In xv6 operating system project, our goal is to add multi-threading capability to the xv6 educational kernel. This feature allows us to manage multiple threads within a single process simultaneously.
 
 Currently, xv6 only supports processes, and each process runs independently of the others. By adding threads, we can execute different parts of a program simultaneously within a single process, which leads to increased efficiency in some scenarios.
